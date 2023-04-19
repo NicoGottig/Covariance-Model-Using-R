@@ -1,0 +1,301 @@
+---
+title: "Reporte de Inferencia"
+subtitle: "Explicación del PBI Per Cápita para el año 2016."
+author: "Gottig, Nicolás"
+date: "2023"
+fontsize: 12pt
+geometry: margin=1in, a4paper
+output: pdf_document
+documentclass: article
+header-includes:
+    - \usepackage{setspace}
+    - \usepackage{titling}
+    - \pretitle{\begin{flushleft}\LARGE}
+    - \posttitle{\par\end{flushleft}\vskip 0.5em}
+    - \preauthor{\begin{flushleft}\large}
+    - \postauthor{\par\end{flushleft}\vskip 0.5em}
+    - \predate{\begin{flushleft}\large}
+    - \postdate{\par\end{flushleft}\vskip 0.5em}
+
+---
+\onehalfspacing
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message=FALSE)
+```
+
+
+```{r code, echo = FALSE}
+## ANALISIS CON DATOS DEL 2016
+library(tidyverse)
+library(caret)
+library(countrycode)
+library(janitor)
+library(naniar)
+library(corrplot)
+library(leaps)
+library(car)
+library(knitr)
+
+# IMPORTACION DE LOS DATOS -----
+df1 <- read.csv("data//PBI2011.csv")
+df2 <- read.csv("data/GPC_GINI_LABOR_HIGHTECH.csv")
+df3 <- read.csv("data/PATEN_MEDHIGHEXP.csv")
+
+df1 <- df1 %>% 
+  select(COUNTRY = Country.Name, 
+         GDP2011 = GDP.per.capita..PPP..constant.2011.international.....NY.GDP.PCAP.PP.KD.,
+         GDP2005 = GDP.per.capita..constant.2005.US....NY.GDP.PCAP.KD.,
+         POPAGE = Population.ages.15.64....of.total...SP.POP.1564.TO.ZS.,
+         GINI = GINI.index..World.Bank.estimate...SI.POV.GINI.,
+         HTEXPORT = High.technology.exports....of.manufactured.exports...TX.VAL.TECH.MF.ZS.)
+
+df2 <- df2 %>% 
+  select(COUNTRY = Country.Name,
+         ADVLABOR = Labor.force.with.advanced.education....of.total.working.age.population.with.advanced.education...SL.TLF.ADVN.ZS.)
+
+df3 <- df3 %>% 
+  select(COUNTRY = Country.Name,
+         PATENT = Patent.applications..residents..IP.PAT.RESD.,
+         MHTEXPORT = Medium.and.high.tech.exports....manufactured.exports...TX.MNF.TECH.ZS.UN.)
+
+df <- inner_join(df1, df2)
+df <- inner_join(df, df3)
+
+df <- df %>% 
+  select(COUNTRY, GDP2005, GDP2011, POPAGE, ADVLABOR, GINI, PATENT, MHTEXPORT)
+
+
+# CONSTRUCCI?N DE FACTORES ------
+# AMERICA DEL SUR
+codigos_am_s <- c("AR","BO","BR","CL","CO","EC","FK","GF","GY","PY","PE","SR","UY","VE")
+paises_am_s <- countrycode(codigos_am_s, "iso2c", "country.name")
+codigos_am_nc <- c("AI","AG","AW","BS","BB","BZ","BM","VG","CA","KY","CR","CU","CW","DM","DO","SV","GL","GD","GP","GT","HT","HN","JM","MQ","MX","MS","NI","PA","PR","BL","KN","LC","MF","PM","VC","SX","TT","TC","US","VI")
+paises_am_nc <- countrycode(codigos_am_nc, "iso2c", "country.name")
+
+# EUROPA
+codigos_europa <- c("AL","AD","AT","BY","BE","BA","BG","HR","CY","CZ","DK","EE","FO","FI","FR","DE","GI","GR","HU","IS","IE","IM","IT","XK","LV","LI","LT","LU","MK","MT","MD","MC","ME","NL","NO","PL","PT","RO","RU","SM","RS","SK","SI","ES","SE","CH","UA","GB","VA")
+paises_europa <- countrycode(codigos_europa, "iso2c", "country.name", custom_match = list(XK = "Kosovo"))
+paises_europa <- unlist(paises_europa)
+
+# AFRICA
+codigos_africa <- c("DZ","AO","BJ","BW","BF","BI","CM","CV","CF","TD","KM","CD","CG","CI","DJ","EG","GQ","ER","ET","GA","GM","GH","GN","GW","KE","LS","LR","LY","MG","MW","ML","MR","MU","YT","MA","MZ","NA","NE","NG","RW","ST","SN","SC","SL","SO","ZA","SS","SD","SZ","TZ","TG","TN","UG","EH","ZM","ZW")
+paises_africa <- countrycode(codigos_africa, "iso2c", "country.name")
+
+# ASIA 
+codigos_asia <- c("AF","AM","AZ","BH","BD","BT","BN","KH","CN","CY","GE","HK","IN","ID","IR","IQ","IL","JP","JO","KZ","KW","KG","LA","LB","MO","MY","MV","MN","MM","NP","KP","OM","PK","PS","PH","QA","SA","SG","KR","LK","SY","TW","TJ","TH","TL","TR","TM","AE","UZ","VN","YE")
+paises_asia <- countrycode(codigos_asia, "iso2c", "country.name")
+
+# OCEANIA
+codigos_oceania <- c("AS","AU","CK","FJ","PF","GU","KI","MH","FM","NR","NC","NZ","NU","MP","PW","PG","PN","WS","SB","TK","TO","TV","UM","VU","WF")
+paises_oceania <- countrycode(codigos_oceania, "iso2c", "country.name")
+
+# ANTARTIDA
+codigos_antartida <- c("AQ")
+paises_antartida <- countrycode(codigos_antartida, "iso2c", "country.name")
+
+# Guardo dataframe
+
+
+
+paises_am_nc <- c(paises_am_nc, 
+                  "Virgin Islands (U.S.)",
+                  "Antigua and Barbuda", 
+                  "Bahamas, The",
+                  "Sint Maarten (Dutch part)",
+                  "St. Kitts and Nevis",
+                  "Turks and Caicos Islands")
+
+paises_am_s <- c(paises_am_s,
+                 "Curacao",
+                 "Trinidad and Tobago",
+                 "Venezuela, RB")
+
+paises_europa <- c(paises_europa,
+                   "Channel Islands",
+                   "Bosnia and Herzegovina",
+                   "Slovak Republic",
+                   "St. Martin (French part)",
+                   "St. Vincent and the Grenadines",
+                   "Turkiye")
+
+paises_asia <- c(paises_asia,
+                 "Brunei Darussalam",
+                 "Hong Kong SAR, China",
+                 "Iran, Islamic Rep.",
+                 "Korea, Dem. People's Rep.",
+                 "Korea, Rep.",
+                 "Kyrgyz Republic",
+                 "Lao PDR",
+                 "Macao SAR, China",
+                 "Myanmar",
+                 "Russian Federation",
+                 "Syrian Arab Republic",
+                 "West Bank and Gaza", 
+                 "Yemen, Rep.")
+
+paises_africa <- c(paises_africa,
+                   "Congo, Dem. Rep.",
+                   "Congo, Rep.",
+                   "Egypt, Arab Rep.",
+                   "Gambia, The",
+                   "Cabo Verde",
+                   "Cote d'Ivoire",
+                   "Sao Tome and Principe",
+                   "Sub-Saharan Africa (excluding high income)")
+
+paises_oceania <- c(paises_oceania, 
+                    "Micronesia, Fed. Sts.")
+
+df$CONT <- case_when(
+  df$COUNTRY %in% paises_africa == TRUE ~ "AFRICA",
+  df$COUNTRY %in% paises_am_s == TRUE ~ "S.AMERICA",
+  df$COUNTRY %in% paises_am_nc == TRUE ~ "N.AMERICA",
+  df$COUNTRY %in% paises_antartida == TRUE ~ "ANTARTIDA",
+  df$COUNTRY %in% paises_asia == TRUE ~ "ASIA",
+  df$COUNTRY %in% paises_europa == TRUE ~ "EUROPA",
+  df$COUNTRY %in% paises_oceania == TRUE ~ "OCEANIA")
+
+df[,2:8] <- apply(df[,2:8], MARGIN = 2, FUN = as.double) %>% 
+  data.frame()
+
+rm(CONT, dummy, paises_africa, paises_am_nc, paises_am_s, paises_antartida, paises_asia, paises_europa, paises_oceania, codigos_africa, codigos_am_s, codigos_am_nc, codigos_antartida, codigos_asia, codigos_europa, codigos_oceania, df1, df2, df3)
+
+
+dftrunc <- df %>% 
+  select(COUNTRY, GDP2011, CONT, MHTEXPORT, POPAGE)
+
+dftrunc <- na.omit(dftrunc)
+
+# Mutaci?n a log
+dftrunc <- dftrunc %>%
+  mutate(GDP2011log = log(GDP2011))
+
+dftrunc <- dftrunc %>% 
+  filter(GDP2011 > quantile(dftrunc$GDP2011, .05))
+
+dftrunc$CONT <- case_when(
+  dftrunc$CONT %in% c("N.AMERICA", "S.AMERICA") == TRUE ~ "AMERICA",
+  dftrunc$CONT %in% c("N.AMERICA", "S.AMERICA") == FALSE ~ dftrunc$CONT
+)
+
+```
+
+
+# I.	INTRODUCCIÓN
+Los modelos tradicionales de crecimiento económico consideran, en general, la importancia del desarrollo tecnológico a largo plazo debido a los efectos sobre el resto de los sectores (agropecuario, industrial, de servicios, etc.), incluyendo el valor agregado que genera vs. Sus costos de producción y comercialización (por ejemplo, un software no tiene grandes costos asociados a su logística). Por otro lado, la escuela estructuralista propone dimensiones vinculadas a la posición geopolítica del sistema económico, e indica que la distribución de la tecnología en los países del mundo se da de forma desigual. Esto implica que los países con mayor tecnología crecen más “rápido”. Un indicador de crecimiento económico puede el PBI per cápita, que cumple el requisito de estar estandarizado por la población y en una unidad de cambio común (U$D).
+Aunque los análisis de causalidad de este tipo de fenómenos deben realizarse de forma longitudinal (Ej. Datos de panel) a los efectos de este trabajo se propone estudiar, para el año 2016 (debido a la disponibilidad de datos) la relación entre el PBI per cápita, el desarrollo tecnológico (medido como la participación porcentual de las exportaciones de bienes o servicios de media y alta tecnología como porcentaje del total de manufactura) y la fuerza de trabajo. Como variable aproximada de esta última se utiliza la población entre 15 y 65 años como porcentaje del total. Aunque hay variables más precisas, se seleccionó esta por la cantidad de datos disponibles. Para hacer este estudio de corte transversal, se consideran a los países con datos disponibles para dicho año como unidad elemental. 
+Se adquiere un set de datos del sitio web del Banco Mundial de 9 variables que registran datos de 145 países en el año 2016. Los valores de las variables son promedios históricos del año bajo estudio. Éstas son: 
+POPAGE: Porcentaje de población entre 15 y 64 años (en %).
+GDP2011: PBI per cápita (en U$D a precios del 2011).
+MHTEXPORT: Exportaciones de media y alta tecnología como porcentaje de la manufactura.
+CONTAFRICA: Indicativa. 1 si el país es del continente africano.
+CONTASIA: Indicativa. 1 si el país es del continente asiático.
+CONTEUROPA: Indicativa. 1 si el país es del continente europeo.
+CONTAMERICA: Indicativa. 1 si el país es de América.
+CONTOCEANIA: Indicativa. 1 si el país es de Oceanía.
+El objetivo de esta monografía es estudiar las relaciones entre el crecimiento económico, la población económicamente activa, la especialización del sector difusor de conocimiento (medido como exportaciones de media y alta tecnología como porcentaje de la exportación de manufactura) y la región.
+
+# II.	ANÁLISIS DESCRIPTIVO
+Con respecto a la selección de casos, se quitó el 5% de los países con menor PBI Per Cápita para cumplir con el supuesto de normalidad en la variable respuesta. Además, se eliminó del registro a la República del Congo (África) y a Moldova (Europa) por tener comportamientos atípicos en relación a los demás países del mismo continente (Europa). Por otro lado, se eliminó también a Afganistán por registros incorrectos en la variable “Exportaciones de media y alta tecnología”. Del total de países registrados en el estudio, la cantidad de casos estudiados disminuye a 134. 
+
+```{r echo = FALSE}
+
+tbl1 <- tabyl(dftrunc$CONT) %>% 
+  arrange(-percent)
+
+colnames(tbl1) <- c("Continente", "Frec.", "Part. Rel.")
+
+kable(tbl1, caption = "Tabla 1 – Cantidad de casos por continente.")
+
+```
+
+En relación a la cantidad de casos, se puede observar en la siguiente tabla que la mayoría de países pertenecen a Asia, Europa y América, siendo el menor Oceanía. 
+Si se analiza la distribución del PBI Per Cápita entre los continentes, se puede observar que Asia, Norteamérica y Sudamérica tienen estadísticos de tendencia central similares (como Europa y Oceanía) aunque la variancia de Asia es mayor a las otras. 
+
+
+```{r echo=FALSE}
+dftrunc %>% 
+  ggplot(aes(y = GDP2011log, fill = CONT, group = CONT)) +
+  geom_boxplot() +
+  ylab("PBI Per Capita log") +
+  guides(fill=guide_legend(title="Continente")) +
+  labs(title = "Gráfico 1 - Distribución del PBI Per Cápita según continente.") + 
+  theme_bw()
+
+```
+Por otro lado, se realiza un análisis exploratorio y se observa que los ingresos per cápita no siguen una distribución normal, esto puede ser corregido mediante el cálculo del logaritmo de la variable GDP. En el siguiente gráfico se expone la distribución de la variable GDP transformada.
+
+```{r echo = FALSE}
+dftrunc %>% 
+  ggplot(aes(x = GDP2011log)) +
+  geom_histogram(fill = "orange", color = "black", bins = 12) +
+  xlab("PBI PER CAPITA log") +
+  labs("Gráfico 2 – Distribución del PBI Per Cápita transformado por su logaritmo. ") + 
+  theme_bw()
+```
+
+```{r echo = FALSE}
+swtest <- data.frame(
+  Respuesta = c("PBI PER CAPITA", "PBI PER CAPITA LOG"),
+  WStat = c(0.854, 0.982),
+  Pval = c(0.000, 0.070)
+)
+
+kable(swtest, caption = "Tabla 2 – Resultados de la prueba Shapiro Wilk para H0: Distribución Normal")
+
+```
+
+
+Si evaluamos la correlación entre las variables, aquella que representa al PBI Per Cápita posee correlación lineal positiva con la población urbana, con las exportaciones de media y alta tecnología y está inversamente relacionada con la tasa de interés. Si ajustamos el PBI Per Cápita por su logaritmo, obtenemos coeficientes de correlación con mejor ajuste:
+
+```{r}
+cor <- dftrunc %>% 
+  select_if(is.numeric) %>% 
+  select(!GDP2011) %>% 
+  cor()
+
+kable(cor, caption = "Tabla 3 – Correlación entre variables continuas")
+
+```
+Si estudiamos las relaciones bivariadas entre las variables, podemos observar que en general la relación entre las exportaciones de media y alta tecnología y el PBI per cápita son positivas, excepto para continentes específicos.
+En el caso de las exportaciones de media y alta tecnología en relación al PBI Per Cápita, se observa interacción entre el continente africano y las exportaciones de media y alta tecnología.  Esto puede observarse en el gráfico 4.
+Por otro lado, la distribución conjunta entre la población entre 15 y 64 años (como porcentaje del total) y el PBI Per Cápita parecen tener una relación positiva para todos los continentes excepto para Europa (en donde un incremento en la participación relativa de este rango etario está asociado a menos PBI Per Cápita. En este trabajo no hay un marco teórico que explique estas asociaciones, aunque se sugiere un estudio demográfico exhaustivo. 
+
+```{r echo = FALSE}
+dftrunc %>% 
+  filter(!(COUNTRY  %in% c("Congo, Rep.", "Moldova"))) %>% 
+  select(!c(GDP2011, COUNTRY)) %>% 
+  filter(CONT != "OCEANIA") %>% 
+  pivot_longer(-c(GDP2011log, CONT), values_to = "val", names_to = "name") %>% 
+  ggplot(aes(x = val, y = GDP2011log, color = CONT)) +
+  geom_point(size = 2) +
+  ylab("PBI Per Capita log") +
+  labs("Gráfico 4 – Asociación entre el PBI Per Cápita, exportaciones de media y alta tecnología y tasa de habitantes entre 15 y 64 años") + 
+  guides(color = guide_legend(title="CONTe")) +
+  xlab("") +
+  geom_smooth(method = "lm", se = FALSE) +
+  facet_wrap(~ name, scales = "free") +
+  theme_bw()
+
+```
+
+En un primer modelo se considerarán todas las variables. Como el objetivo es hacer inferencia sobre los factores que están asociados a un mayor PBI Per Cápita (y no predicción) se tendrá en cuenta como criterio el R_(a,p)^2 , el criterio de Mallow’s y el de información bayesiano, debido a que n≥8, se favorece la selección de modelos parsimoniosos. Por lo tanto, el modelo de covarianza queda definido como:
+
+$log(Y)_{ij} = \mu + \beta_1X_{1i}+\beta_2X_{2i}+\alpha_j+\epsilon_{ij}$ para $\epsilon \sim N(0,\sigma^2)$
+
+$\mu$: PBI Per cápita (log)  esperado para el continente africano.
+$X_1i$: Exportaciones de media y alta tecnología (en % de manufactura) del i-esimo caso.
+$X_2_i$: Participación relativa de personas entre 15 y 64 años en el total de la pob. del i-esimo caso.
+$alpha_j$: j-esimo continente (4 niveles)  
+$i=1,…,n_j$
+$j=1,…4$
+
+En este caso, el hecho de incluir factores provoca que la matriz no sea de rango completo (r<p). En la matriz de diseño del modelo hay 7 parámetros a estimar incluyendo la ordenada al origen. No obstante, al ser ciertas columnas combinaciones lineales de otras, el rango de la matriz se acota a 6. Esto es importante porque la solución de las ecuaciones normales puede variar de acuerdo a la matriz inversa generalizada que se utilice, aunque no variará el resultado de las funciones estimables. Por otro lado, la hipótesis lineal general deberá aplicarse sobre funciones estimables. 
+
+
+```{r echo = FALSE}
+
+```
+
+Tabla 4 – Estimación de parámetros del modelo 1
